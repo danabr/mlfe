@@ -3218,4 +3218,12 @@ wait_for_processes_to_die(ExpectedNumProcesses, AttemptsLeft) ->
             timer:sleep(10),
             wait_for_processes_to_die(ExpectedNumProcesses, AttemptsLeft-1)
     end.
+
+simple_alias_test() ->
+    Code = "module alias\n\n"
+           "type integer = int\n\n"
+           "type t = SpelledOut integer\n\n"
+           "make () = SpelledOut 1",
+    ?assertMatch({ok, _}, module_typ_and_parse(Code)).
+
 -endif.

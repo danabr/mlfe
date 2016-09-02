@@ -20,8 +20,9 @@ parse(Tokens) when is_list(Tokens) ->
 
 parse_module(NextVarNum, Text) when is_list(Text) ->
     {ok, Tokens, _} = mlfe_scanner:scan(Text),
-    rebind_and_validate_module(NextVarNum,
-                               parse_module(Tokens, #mlfe_module{}));
+    eliminate_aliases(rebind_and_validate_module(NextVarNum,
+                                                 parse_module(Tokens,
+                                                              #mlfe_module{})));
 
 parse_module([], #mlfe_module{name=no_module}) ->
     {error, no_module_defined};
@@ -145,6 +146,36 @@ update_memo(M, #mlfe_comment{}) ->
     {ok, M};
 update_memo(_, Bad) ->
     {error, {"Top level requires defs, module, and export declarations", Bad}}.
+
+eliminate_aliases({error, _}=Err) ->
+    Err;
+eliminate_aliases({ok, A, B, #mlfe_module{types=Types0}=Mod}) ->
+    Types = eliminate_aliases(Types0, Types0),
+    {ok, A, B, Mod#mlfe_module{types=Types}}.
+
+eliminate_aliases([], Types) -> Types;
+eliminate_aliases([#mlfe_type{name={type_name, _, A}, members=[R]}|Rest],
+                  Types) when is_atom(R) ->
+    eliminate_aliases(Rest, eliminate_alias(Types, A, R));
+eliminate_aliases([_NotAnAlias|Rest], Types) ->
+    eliminate_aliases(Rest, Types).
+
+eliminate_alias([], _, _) -> [];
+eliminate_alias([#mlfe_type{name=Alias}|Rest], Alias, Replacement) ->
+    eliminate_alias(Rest, Alias, Replacement);
+eliminate_alias([#mlfe_type{members=M}=T0|Rest], Alias, Replacement) ->
+    T = T0#mlfe_type{members = replace_alias(M, Alias, Replacement)},
+    [T|eliminate_alias(Rest, Alias, Replacement)];
+eliminate_alias([T|Rest], Alias, Replacement) ->
+    [T|eliminate_alias(Rest, Alias, Replacement)].
+
+replace_alias([], _, _) -> [];
+replace_alias([#mlfe_constructor{arg=#mlfe_type{name={type_name, _, Alias}}}=M0|Ms], Alias,
+              Replacement) when is_atom(Replacement) ->
+    M = M0#mlfe_constructor{arg=Replacement},
+    [M|replace_alias(Ms, Alias, Replacement)];
+replace_alias([M|Ms], Alias, Replacement) ->
+    [M|replace_alias(Ms, Alias, Replacement)].
 
 %% Select a discrete batch of tokens to parse.  This basically wants a sequence
 %% from the beginning of a top-level expression to a recognizable break between
