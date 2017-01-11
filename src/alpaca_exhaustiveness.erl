@@ -7,7 +7,7 @@
 
 -include("alpaca_ast.hrl").
 
-check_exhaustiveness(#alpaca_module{functions=Funs}=M) ->
+check_exhaustiveness(#alpaca_module{functions=Funs}) ->
   lists:flatmap(fun test_exhaustiveness/1, Funs).
 
 print_warning({partial_function, F, Patterns}) ->
@@ -26,13 +26,12 @@ format_pattern({t_bool, Bool})    -> atom_to_list(Bool);
 format_pattern({t_list, empty})   -> "[]";
 format_pattern({t_list, C})       ->
   "(" ++ format_pattern(C) ++ " :: _)";
+format_pattern(t_map)             -> "#{}";
 format_pattern({t_tuple, Size, Ix, C}) ->
   Parts = lists:duplicate(Ix-1, "_") ++
           [format_pattern(C)|lists:duplicate(Size-Ix, "_")],
   "(" ++ string:join(Parts, ",") ++ ")";
 format_pattern(t_unit)            -> "()";
-format_pattern({t_map, Val}) ->
-  "#{ _ => " ++ format_pattern(Val) ++ " }";
 format_pattern({t_record, Assignments}) ->
   Fields = lists:map(fun({K, V}) ->
     atom_to_list(K) ++ " = " ++ format_pattern(V) end,
@@ -85,7 +84,7 @@ map_with_index([X|Rest], Ix, Acc, F) ->
 
 map(List, F) -> lists:map(F, List).
 
-constructors(#adt{members=Constructors}) ->
+constructors(#adt{members=Constructors}=A) ->
   lists:flatmap(fun constructors/1, Constructors);
 constructors({t_adt_cons, N}=C) when is_list(N) -> [C];
 constructors({t_arrow, _, _})     -> ['_'];
@@ -98,9 +97,18 @@ constructors(t_int)               -> ['_'];
 constructors({t_list, Elem})      ->
   Base = lists:map(fun(E) -> {t_list, E} end, constructors(Elem)),
   [{t_list, empty}|Base];
-constructors({t_map, _Key, Val})  ->
-  ValCs = constructors(Val),
-  lists:map(fun(V) -> {t_map, V} end, ValCs);
+%% We explicitly ignore maps.
+%% Consider this example:
+%%   let foo #{true => false,  false => true} = ...
+%%
+%% The most helpful patterns to report would be:
+%%   let foo #{true => false, false => false} = ...
+%%   let foo #{true => true, false => true } = ...
+%%   let foo #{true => true, false => false } = ...
+%%
+%% However, to do this, we would need to know all the keys that are used
+%% in the patterns, and we do not get that information from the type.
+constructors({t_map, _KeyT, _ValT})  -> [t_map];
 constructors(#t_record{members=Ms}) ->
   lists:map(fun(A) -> {t_record, A} end, assignments(Ms));
 constructors(t_string)              -> ['_'];
@@ -139,19 +147,7 @@ covered({t_list, empty}, Patterns) ->
     lists:any(fun matches_empty_list/1, Patterns);
 covered({t_list, Elem}, Patterns) ->
   lists:any(fun(P) -> matches_list(P, Elem) end, Patterns);
-%% We need to revisit maps.
-%% They are burdensome, since we do not know which keys will appear
-%% without studying the patterns.
-covered({t_map, Val}, Patterns) ->
-  AllPs = lists:flatten([ Ps || #alpaca_map{pairs=Ps} <- Patterns ]),
-  AllKeys = lists:usort([ to_val(K) || #alpaca_map_pair{key=K} <- AllPs ]),
-  [] =:= lists:foldl(fun(K, Errs) ->
-    KeyPatterns = [ Pat || #alpaca_map_pair{key=PK, val=Pat} <- AllPs, K =:= to_val(PK) ],
-    case covered(Val, KeyPatterns) of
-      false -> [{t_map, K, Val}|Errs];
-      true  -> Errs
-    end
-  end, [], AllKeys);
+covered(t_map, _Patterns) -> true;
 covered({t_record, Assignments}, Patterns) ->
   lists:any(fun(P) -> matches_record(P, Assignments) end, Patterns);
 covered({t_tuple, TSize, Ix, MC}, Patterns) ->
