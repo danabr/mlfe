@@ -19,8 +19,8 @@
 
 -include("alpaca_ast.hrl").
 
-check_exhaustiveness(#alpaca_module{functions=Funs}) ->
-  lists:flatmap(fun test_exhaustiveness/1, Funs).
+check_exhaustiveness(#alpaca_module{functions=Funs, types=Ts}) ->
+  lists:flatmap(fun(F) -> check_exhaustiveness(F, Ts) end, Funs).
 
 print_warning({partial_function, F, Patterns}) ->
   {symbol, _, Name} = F#alpaca_fun_def.name,
@@ -33,16 +33,17 @@ print_pattern({missing_pattern, Args}, FName) ->
   Formatted = lists:map(fun format_pattern/1, Args),
   io:format("  let ~s ~s = ...~n", [FName, string:join(Formatted, " ")]).
 
-format_pattern({t_adt_cons, C})   -> C;
+format_pattern({t_adt_cons, C, none})   -> C;
+format_pattern({t_adt_cons, C, Arg})    ->
+  "(" ++ C ++ " " ++ format_pattern(Arg) ++ ")";
 format_pattern({t_bool, Bool})    -> atom_to_list(Bool);
 format_pattern({t_list, empty})   -> "[]";
 format_pattern({t_list, C})       ->
   "(" ++ format_pattern(C) ++ " :: _)";
 format_pattern(t_map)             -> "#{}";
-format_pattern({t_tuple, Size, Ix, C}) ->
-  Parts = lists:duplicate(Ix-1, "_") ++
-          [format_pattern(C)|lists:duplicate(Size-Ix, "_")],
-  "(" ++ string:join(Parts, ",") ++ ")";
+format_pattern({t_tuple, Elems}) ->
+  Parts = lists:map(fun(E) -> format_pattern(E) end, Elems),
+  "(" ++ string:join(Parts, ", ") ++ ")";
 format_pattern(t_unit)            -> "()";
 format_pattern({t_record, Assignments}) ->
   Fields = lists:map(fun({K, V}) ->
@@ -51,59 +52,58 @@ format_pattern({t_record, Assignments}) ->
   "{ " ++ string:join(Fields, ", ") ++ " }";
 format_pattern('_')               -> "_".
 
-test_exhaustiveness(#alpaca_fun_def{type=Type}=F) ->
+check_exhaustiveness(#alpaca_fun_def{type=Type}=F, ModTypes) ->
   case Type of
     {t_arrow, FunArgTypes, _}                  ->
-      test_exhaustiveness(F, FunArgTypes);
+      check_exhaustiveness(F, FunArgTypes, ModTypes);
     {t_receiver, _, {t_arrow, FunArgTypes, _}} ->
-      test_exhaustiveness(F, FunArgTypes);
+      check_exhaustiveness(F, FunArgTypes, ModTypes);
     _                                          -> % Top level value
       []
   end.
 
-test_exhaustiveness(#alpaca_fun_def{versions=FunArgPatterns}=F, FunArgTypes) ->
-  case exhaustiveness(FunArgTypes, FunArgPatterns) of
+check_exhaustiveness(#alpaca_fun_def{versions=FunArgPatterns}=F, FunArgTypes,
+                    ModTypes) ->
+  case missing_patterns(FunArgTypes, FunArgPatterns, ModTypes) of
     []              -> [];
     MissingPatterns -> [{partial_function, F, MissingPatterns}]
   end.
 
-exhaustiveness(FunArgTypes, FunArgPatterns) ->
-  NumArgs = length(FunArgTypes),
-  flatmap_with_index(FunArgTypes, fun(FunArgType, ArgIx) ->
-    Patterns = extract_patterns(FunArgPatterns, ArgIx),
-    ArgsAfter = NumArgs-ArgIx-1,
-    map(constructors(FunArgType), fun(Constr) ->
-      case lists:any(fun(P) -> covered(Constr, P) end, Patterns) of
-        true -> [];
-        false ->
-          MissingPattern = lists:duplicate(ArgIx, '_') ++
-                           [Constr|lists:duplicate(ArgsAfter, '_')],
-          [{missing_pattern, MissingPattern}]
-      end
-    end)
-  end).
+missing_patterns(FunArgTypes, FunArgPatterns, ModTypes) ->
+  Constructors = constructors({t_tuple, FunArgTypes}, ModTypes),
+  Patterns = extract_patterns(FunArgPatterns),
+  lists:flatmap(fun({t_tuple, FunArgs}=Constr) ->
+    case lists:any(fun(P) -> covered(Constr, P) end, Patterns) of
+      true  -> [];
+      false -> [{missing_pattern, FunArgs}]
+    end
+  end, Constructors).
 
-flatmap_with_index(List, F) ->
-  lists:flatten(map_with_index(List, 0, [], F)).
-
-map_with_index([], _Ix, Acc, _F) -> lists:reverse(Acc);
-map_with_index([X|Rest], Ix, Acc, F) ->
-  map_with_index(Rest, Ix+1, [F(X, Ix)|Acc], F).
-
-map(List, F) -> lists:map(F, List).
-
-constructors(#adt{members=Constructors}) ->
-  lists:flatmap(fun constructors/1, Constructors);
-constructors({t_adt_cons, N}=C) when is_list(N) -> [C];
-constructors({t_arrow, _, _})     -> ['_'];
-constructors(t_atom)              -> ['_'];
-constructors(t_binary)            -> ['_'];
-constructors(t_bool)              -> [{t_bool, true}, {t_bool, false}];
-constructors(t_chars)             -> ['_'];
-constructors(t_float)             -> ['_'];
-constructors(t_int)               -> ['_'];
-constructors({t_list, Elem})      ->
-  Base = lists:map(fun(E) -> {t_list, E} end, constructors(Elem)),
+constructors(#adt{name=Name}, ModTypes) ->
+  {ok, T} = lookup_type(ModTypes, Name),
+  constructors(T, ModTypes);
+constructors(#alpaca_type{members=[], name={type_name, _, Name}}, ModTypes) ->
+  {ok, T} = lookup_type(ModTypes, Name),
+  constructors(T, ModTypes);
+constructors(#alpaca_type{members=Members}, ModTypes) ->
+  lists:flatmap(fun(C) -> constructors(C, ModTypes) end, Members);
+constructors(#alpaca_type_tuple{members=Members}, ModTypes) ->
+  constructors({t_tuple, Members}, ModTypes);
+constructors(#alpaca_constructor{name={type_constructor, _, N}, arg=none},
+             _ModTypes) ->
+  [{t_adt_cons, N, none}];
+constructors(#alpaca_constructor{name={type_constructor, _, N}, arg=Arg},
+             ModTypes) ->
+  lists:map(fun(A) -> {t_adt_cons, N, A} end, constructors(Arg, ModTypes));
+constructors({t_arrow, _, _}, _ModTypes) -> ['_'];
+constructors(t_atom, _ModTypes)          -> ['_'];
+constructors(t_binary, _ModTypes)        -> ['_'];
+constructors(t_bool, _ModTypes)          -> [{t_bool, true}, {t_bool, false}];
+constructors(t_chars, _ModTypes)         -> ['_'];
+constructors(t_float, _ModTypes)         -> ['_'];
+constructors(t_int, _ModTypes)           -> ['_'];
+constructors({t_list, Elem}, ModTypes)      ->
+  Base = lists:map(fun(E) -> {t_list, E} end, constructors(Elem, ModTypes)),
   [{t_list, empty}|Base];
 %% We explicitly ignore maps.
 %% Consider this example:
@@ -116,39 +116,44 @@ constructors({t_list, Elem})      ->
 %%
 %% However, to do this, we would need to know all the keys that are used
 %% in the patterns, and we do not get that information from the type.
-constructors({t_map, _KeyT, _ValT})  -> [t_map];
-constructors(#t_record{members=Ms}) ->
-  lists:map(fun(A) -> {t_record, A} end, assignments(Ms));
-constructors(t_string)              -> ['_'];
-constructors({t_tuple, Members})    ->
-  TupleSize = length(Members),
-  F = fun(Member, Ix) ->
-    MemberConstructors = constructors(Member),
-    lists:map(fun(C) ->
-      {t_tuple, TupleSize, Ix+1, C}
-    end, MemberConstructors)
-  end,
-  flatmap_with_index(Members, F);
-constructors(t_unit)             -> [t_unit];
-constructors({unbound, _, _})    -> ['_'].
+constructors({t_map, _KeyT, _ValT}, _ModTypes) -> [t_map];
+constructors(#t_record{members=Ms}, ModTypes)  ->
+  lists:map(fun(A) -> {t_record, A} end, assignments(Ms, ModTypes));
+constructors(t_string, _ModTypes)              -> ['_'];
+constructors({t_tuple, Ms}, ModTypes)          ->
+  lists:map(fun(A) -> {t_tuple, maps:values(A)} end, tuple_patterns(Ms, 1, ModTypes));
+constructors(t_unit, _ModTypes)             -> [t_unit];
+constructors({unbound, _, _}, _ModTypes)    -> ['_'].
 
-assignments([]) -> [#{}];
-assignments([#t_record_member{name=Key, type=T}|Rest]) ->
-  RestAssignments = assignments(Rest),
+lookup_type([], Name) -> {not_found, Name};
+lookup_type([#alpaca_type{name={type_name, _, Name}}=T|_], Name) ->
+  {ok, T};
+lookup_type([_|Rest], Name) ->
+  lookup_type(Rest, Name).
+
+assignments([], _ModTypes) -> [#{}];
+assignments([#t_record_member{name=Key, type=T}|Rest], ModTypes) ->
+  RestAssignments = assignments(Rest, ModTypes),
   lists:flatmap(fun(C) ->
     lists:map(fun(A) -> maps:put(Key, C, A) end, RestAssignments)
-  end, constructors(T)).
+  end, constructors(T, ModTypes)).
 
-extract_patterns(FunArgPatterns, ArgIx) ->
-  lists:map(fun(FV) -> extract_pattern(FV, ArgIx) end, FunArgPatterns).
+tuple_patterns([], _Ix, _ModTypes) -> [#{}];
+tuple_patterns([T|Rest], Ix, ModTypes) ->
+  RestPatterns = tuple_patterns(Rest, Ix+1, ModTypes),
+  lists:flatmap(fun(C) ->
+    lists:map(fun(A) -> maps:put(Ix, C, A) end, RestPatterns)
+  end, constructors(T, ModTypes)).
 
-extract_pattern(#alpaca_fun_version{args=Args}, Ix) ->
-  lists:nth(Ix+1, Args).
+extract_patterns(FunArgPatterns) ->
+  lists:map(fun(#alpaca_fun_version{args=Args}) ->
+    #alpaca_tuple{values=Args}
+  end, FunArgPatterns).
 
 covered('_', Pattern)                      ->
   matches_wildcard(Pattern);
-covered({t_adt_cons, CNeedle}, Pattern)    ->
-  matches_constructor(Pattern, CNeedle);
+covered({t_adt_cons, Name, CNeedle}, Pattern)    ->
+  matches_constructor(Pattern, Name, CNeedle);
 covered({t_bool, Boolean}, Pattern)        ->
   matches_bool(Pattern, Boolean);
 covered({t_list, empty}, Pattern)          ->
@@ -159,8 +164,8 @@ covered(t_map, _Pattern)                   ->
   true;
 covered({t_record, Assignments}, Pattern)  ->
   matches_record(Pattern, Assignments);
-covered({t_tuple, TSize, Ix, MC}, Pattern) ->
-  matches_tuple(Pattern, TSize, Ix, MC);
+covered({t_tuple, Members}, Pattern) ->
+  matches_tuple(Pattern, Members);
 covered(t_unit, Pattern)                   ->
   matches_unit(Pattern).
 
@@ -171,10 +176,13 @@ to_val({'_', _Line})          -> '_'.
 matches_bool({boolean, _, Bool}, Bool) -> true;
 matches_bool(Other, _Bool)             -> matches_wildcard(Other).
 
-matches_constructor(#alpaca_type_apply{name={type_constructor, _, CName}},
-                    CNeedle) ->
-  CName =:= CNeedle;
-matches_constructor(C, _CName) -> matches_wildcard(C).
+matches_constructor(#alpaca_type_apply{name={type_constructor, _, Name},
+                                       arg=none}, Name, none) ->
+  true;
+matches_constructor(#alpaca_type_apply{name={type_constructor, _, Name},
+                                       arg=Arg}, Name, CNeedle) ->
+  covered(CNeedle, Arg);
+matches_constructor(C, _Name, _Needle) -> matches_wildcard(C).
 
 matches_empty_list({nil, _}) -> true;
 matches_empty_list(C)        -> matches_wildcard(C).
@@ -190,10 +198,13 @@ matches_record(#alpaca_record{members=Ms}, Assignments) ->
   end, Ms);
 matches_record(C, _Assignments) -> matches_wildcard(C).
 
-matches_tuple(#alpaca_tuple{values=Patterns}, _TSize, ElemIx, TConstr) ->
-  Pattern = lists:nth(ElemIx, Patterns),
-  covered(TConstr, Pattern);
-matches_tuple(Other, _, _, _) -> matches_wildcard(Other).
+matches_tuple(#alpaca_tuple{values=Patterns}, TElems) ->
+  matches(Patterns, TElems);
+matches_tuple(Other, _TElems) -> matches_wildcard(Other).
+
+matches([], []) -> true;
+matches([Pattern|Patterns], [Constructor|Constructors]) ->
+  covered(Constructor, Pattern) andalso matches(Patterns, Constructors).
 
 matches_unit({unit, _}) -> true;
 matches_unit(C)         -> matches_wildcard(C).
