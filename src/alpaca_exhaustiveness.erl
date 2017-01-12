@@ -1,4 +1,9 @@
-%% Note We do not deal with guards, since they can be arbitrary expressions.
+%% Performs exhaustiveness checking of pattern matches.
+%%
+%% Only deals with top level functions, as the typer currently does not
+%% expose type information on the expression level.
+%%
+%% Note: We do not deal with guards, since they can be arbitrary expressions.
 %% Here are two examples that both cover the full set of integers:
 %%   match i with
 %%     x, x < 50 -> :ok
@@ -134,7 +139,7 @@ lookup_type([_|Rest], Name) ->
 wildcard_if_seen(Name, ModTypes, SeenADTs) ->
   case sets:is_element(Name, SeenADTs) of
     true  -> ['_'];
-    false -> 
+    false ->
       {ok, T} = lookup_type(ModTypes, Name),
       constructors(T, ModTypes, sets:add_element(Name, SeenADTs))
   end.
