@@ -75,7 +75,7 @@ check_exhaustiveness(#alpaca_fun_def{versions=FunArgPatterns}=F, FunArgTypes,
   end.
 
 missing_patterns(FunArgTypes, FunArgPatterns, ModTypes) ->
-  Constructors = constructors({t_tuple, FunArgTypes}, ModTypes, sets:new()),
+  Constructors = constructors({t_tuple, FunArgTypes}, ModTypes, sets:new(), []),
   Patterns = extract_patterns(FunArgPatterns),
   lists:flatmap(fun({t_tuple, FunArgs}=Constr) ->
     case lists:any(fun(P) -> covered(Constr, P) end, Patterns) of
@@ -84,30 +84,30 @@ missing_patterns(FunArgTypes, FunArgPatterns, ModTypes) ->
     end
   end, Constructors).
 
-constructors(#adt{name=Name}, ModTypes, SeenADTs) ->
-  wildcard_if_seen(Name, ModTypes, SeenADTs);
-constructors(#alpaca_type{members=[], name={type_name, _, Name}}, ModTypes,
-             SeenADTs) ->
-  wildcard_if_seen(Name, ModTypes, SeenADTs);
-constructors(#alpaca_type{members=Members}, ModTypes, SeenADTs) ->
-  lists:flatmap(fun(C) -> constructors(C, ModTypes, SeenADTs) end, Members);
-constructors(#alpaca_type_tuple{members=Members}, ModTypes, SeenADTs) ->
-  constructors({t_tuple, Members}, ModTypes, SeenADTs);
+constructors(#adt{name=Name, vars=Vars}, ModTypes, SeenADTs, _Vars) ->
+  wildcard_if_seen(Name, ModTypes, SeenADTs, Vars);
+constructors(#alpaca_type{members=[], name={type_name, _, Name}, vars=Vars},
+             ModTypes, SeenADTs, _Vars) ->
+  wildcard_if_seen(Name, ModTypes, SeenADTs, Vars);
+constructors(#alpaca_type{members=Members}, ModTypes, SeenADTs, Vars) ->
+  lists:flatmap(fun(C) -> constructors(C, ModTypes, SeenADTs, Vars) end, Members);
+constructors(#alpaca_type_tuple{members=Members}, ModTypes, SeenADTs, Vars) ->
+  constructors({t_tuple, Members}, ModTypes, SeenADTs, Vars);
 constructors(#alpaca_constructor{name={type_constructor, _, N}, arg=none},
-             _ModTypes, _SeenADTs) ->
+             _ModTypes, _SeenADTs, _Vars) ->
   [{t_adt_cons, N, none}];
 constructors(#alpaca_constructor{name={type_constructor, _, N}, arg=Arg},
-             ModTypes, SeenADTs) ->
-  lists:map(fun(A) -> {t_adt_cons, N, A} end, constructors(Arg, ModTypes, SeenADTs));
-constructors({t_arrow, _, _}, _ModTypes, _SeenADTs) -> ['_'];
-constructors(t_atom, _ModTypes, _SeenADTs)          -> ['_'];
-constructors(t_binary, _ModTypes, _SeenADTs)        -> ['_'];
-constructors(t_bool, _ModTypes, _SeenADTs)          -> [{t_bool, true}, {t_bool, false}];
-constructors(t_chars, _ModTypes, _SeenADTs)         -> ['_'];
-constructors(t_float, _ModTypes, _SeenADTs)         -> ['_'];
-constructors(t_int, _ModTypes, _SeenADTs)           -> ['_'];
-constructors({t_list, Elem}, ModTypes, SeenADTs)      ->
-  Base = lists:map(fun(E) -> {t_list, E} end, constructors(Elem, ModTypes, SeenADTs)),
+             ModTypes, SeenADTs, Vars) ->
+  lists:map(fun(A) -> {t_adt_cons, N, A} end, constructors(Arg, ModTypes, SeenADTs, Vars));
+constructors({t_arrow, _, _}, _ModTypes, _SeenADTs, _Vars) -> ['_'];
+constructors(t_atom, _ModTypes, _SeenADTs, _Vars)          -> ['_'];
+constructors(t_binary, _ModTypes, _SeenADTs, _Vars)        -> ['_'];
+constructors(t_bool, _ModTypes, _SeenADTs, _Vars)          -> [{t_bool, true}, {t_bool, false}];
+constructors(t_chars, _ModTypes, _SeenADTs, _Vars)         -> ['_'];
+constructors(t_float, _ModTypes, _SeenADTs, _Vars)         -> ['_'];
+constructors(t_int, _ModTypes, _SeenADTs, _Vars)           -> ['_'];
+constructors({t_list, Elem}, ModTypes, SeenADTs, Vars)      ->
+  Base = lists:map(fun(E) -> {t_list, E} end, constructors(Elem, ModTypes, SeenADTs, Vars)),
   [{t_list, empty}|Base];
 %% We explicitly ignore maps.
 %% Consider this example:
@@ -120,15 +120,26 @@ constructors({t_list, Elem}, ModTypes, SeenADTs)      ->
 %%
 %% However, to do this, we would need to know all the keys that are used
 %% in the patterns, and we do not get that information from the type.
-constructors({t_map, _KeyT, _ValT}, _ModTypes, _SeenADTs) -> [t_map];
-constructors(#t_record{members=Ms}, ModTypes, SeenADTs)  ->
-  lists:map(fun(A) -> {t_record, A} end, assignments(Ms, ModTypes, SeenADTs));
-constructors(t_string, _ModTypes, _SeenADTs)              -> ['_'];
-constructors({t_tuple, Ms}, ModTypes, SeenADTs)          ->
+constructors({t_map, _KeyT, _ValT}, _ModTypes, _SeenADTs, _Vars) -> [t_map];
+constructors(#t_record{members=Ms}, ModTypes, SeenADTs, Vars)  ->
+  lists:map(fun(A) -> {t_record, A} end, assignments(Ms, ModTypes, SeenADTs, Vars));
+constructors(t_string, _ModTypes, _SeenADTs, _Vars)              -> ['_'];
+constructors({t_tuple, Ms}, ModTypes, SeenADTs, Vars)          ->
   lists:map(fun(A) -> {t_tuple, maps:values(A)} end,
-            tuple_patterns(Ms, 1, ModTypes, SeenADTs));
-constructors(t_unit, _ModTypes, _SeenADTs)             -> [t_unit];
-constructors({unbound, _, _}, _ModTypes, _SeenADTs)    -> ['_'].
+            tuple_patterns(Ms, 1, ModTypes, SeenADTs, Vars));
+constructors(t_unit, _ModTypes, _SeenADTs, _Vars)             -> [t_unit];
+constructors({type_var, _, Var}, ModTypes, SeenADTs, Vars)    ->
+  {Var, C} = lists:keyfind(Var, 1, Vars),
+  constructors(C, ModTypes, SeenADTs, Vars);
+constructors({unbound, _, _}, _ModTypes, _SeenADTs, _Vars)    -> ['_'].
+
+wildcard_if_seen(Name, ModTypes, SeenADTs, Vars) ->
+  case sets:is_element(Name, SeenADTs) of
+    true  -> ['_'];
+    false ->
+      {ok, T} = lookup_type(ModTypes, Name),
+      constructors(T, ModTypes, sets:add_element(Name, SeenADTs), Vars)
+  end.
 
 lookup_type([], Name) -> {not_found, Name};
 lookup_type([#alpaca_type{name={type_name, _, Name}}=T|_], Name) ->
@@ -136,27 +147,20 @@ lookup_type([#alpaca_type{name={type_name, _, Name}}=T|_], Name) ->
 lookup_type([_|Rest], Name) ->
   lookup_type(Rest, Name).
 
-wildcard_if_seen(Name, ModTypes, SeenADTs) ->
-  case sets:is_element(Name, SeenADTs) of
-    true  -> ['_'];
-    false ->
-      {ok, T} = lookup_type(ModTypes, Name),
-      constructors(T, ModTypes, sets:add_element(Name, SeenADTs))
-  end.
 
-assignments([], _ModTypes, _SeenADTs) -> [#{}];
-assignments([#t_record_member{name=Key, type=T}|Rest], ModTypes, SeenADTs) ->
-  RestAssignments = assignments(Rest, ModTypes, SeenADTs),
+assignments([], _ModTypes, _SeenADTs, _Vars) -> [#{}];
+assignments([#t_record_member{name=Key, type=T}|Rest], ModTypes, SeenADTs, Vars) ->
+  RestAssignments = assignments(Rest, ModTypes, SeenADTs, Vars),
   lists:flatmap(fun(C) ->
     lists:map(fun(A) -> maps:put(Key, C, A) end, RestAssignments)
-  end, constructors(T, ModTypes, SeenADTs)).
+  end, constructors(T, ModTypes, SeenADTs, Vars)).
 
-tuple_patterns([], _Ix, _ModTypes, _SeenADTs) -> [#{}];
-tuple_patterns([T|Rest], Ix, ModTypes, SeenADTs) ->
-  RestPatterns = tuple_patterns(Rest, Ix+1, ModTypes, SeenADTs),
+tuple_patterns([], _Ix, _ModTypes, _SeenADTs, _Vars) -> [#{}];
+tuple_patterns([T|Rest], Ix, ModTypes, SeenADTs, Vars) ->
+  RestPatterns = tuple_patterns(Rest, Ix+1, ModTypes, SeenADTs, Vars),
   lists:flatmap(fun(C) ->
     lists:map(fun(A) -> maps:put(Ix, C, A) end, RestPatterns)
-  end, constructors(T, ModTypes, SeenADTs)).
+  end, constructors(T, ModTypes, SeenADTs, Vars)).
 
 extract_patterns(FunArgPatterns) ->
   lists:map(fun(#alpaca_fun_version{args=Args}) ->
