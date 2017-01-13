@@ -2,19 +2,6 @@
 %%
 %% Only deals with top level functions, as the typer currently does not
 %% expose type information on the expression level.
-%%
-%% Note: We do not deal with guards, since they can be arbitrary expressions.
-%% Here are two examples that both cover the full set of integers:
-%%   match i with
-%%     x, x < 50 -> :ok
-%%     x, x = 50 -> :ok
-%%     x, x > 50 -> :ok
-%%
-%%   match i with
-%%     x, x % 2 = 0 -> :ok
-%%     x, x % 2 = 1 -> :ok
-%%
-%% Note: We don't handle union types!
 -module(alpaca_exhaustiveness).
 
 -export([check_exhaustiveness/1]).
@@ -146,6 +133,9 @@ covering_patterns({t_list, Elem}, Mod, AllMods, SeenADTs, Vars) ->
 %%
 %% However, to do this, we would need to know all the keys that are used
 %% in the patterns, and we do not get that information from the type.
+covering_patterns({alpaca_map, _KeyT, _ValT}, _Mod, _AllMods, _SeenADTs,
+                  _Vars) ->
+    [t_map];
 covering_patterns({t_map, _KeyT, _ValT}, _Mod, _AllMods, _SeenADTs, _Vars) ->
     [t_map];
 covering_patterns(#t_record{members=Ms}, Mod, AllMods, SeenADTs, Vars) ->
