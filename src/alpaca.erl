@@ -84,9 +84,6 @@ maybe_print_exhaustivess_warnings(Warnings, Opts) ->
       ok
   end.
 
-check_exhaustiveness(Mods) ->
-    lists:flatmap(fun alpaca_exhaustiveness:check_exhaustiveness/1, Mods).
-
 load_files(Filenames) ->
     lists:foldl(
       fun(FN, Acc) ->
