@@ -1,0 +1,61 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: alpaca\n"
+"POT-Creation-Date: 2017-03-11 13:09+0100\n"
+"Plural-Forms: nplurals=1; plural=1;\n"
+
+msgid "%(raw_error_term)\nSorry, we do not have a proper message for this err"
+"or yet.\nPlease consider filing an issue at https://www.github.com/alp"
+"aca-lang/alpaca."
+msgstr ""
+
+msgid "Cannot find module \"%(mod)\"."
+msgstr ""
+
+msgid "Duplicate definitition of \"%(id)\"."
+msgstr ""
+
+msgid "Duplicate definitition of type \"%(id)\"."
+msgstr ""
+
+msgid "Incomplete expression."
+msgstr ""
+
+msgid "Invalid binary part type \"%(type)\".\nValid types are \"binary\", \"f"
+"loat\", \"int\", and \"utf8\"."
+msgstr ""
+
+msgid "Invalid binary qualifier \"%(qualifier)\".\nValid qualifiers are \"end"
+"\", \"sign\", \"size\", \"type\" and \"unit\"."
+msgstr ""
+
+msgid "Invalid endianess \"%(endianess)\".Did you mean \"big\", \"little\", o"
+"r \"native\"?"
+msgstr ""
+
+msgid "Invalid pattern for function argument."
+msgstr ""
+
+msgid "Invalid top level construct."
+msgstr ""
+
+msgid "No function %(fun) exported from module %(mod)."
+msgstr ""
+
+msgid "No module name defined.\nYou may define it like this: \"module foo\""
+msgstr ""
+
+msgid "Redefintion of module name from \"%(old)\" to \"%(new)\"."
+msgstr ""
+
+msgid "Type parameter provided for builtin type %(type), but none was expecte"
+"d."
+msgstr ""
+
+msgid "Unexpected token \"%(token)\"."
+msgstr ""
+
+msgid "Wrong number of type parameters provided for builtin type %(type).\nEx"
+"pected %(num_expected), but got %(num_supplied)."
+msgstr ""
