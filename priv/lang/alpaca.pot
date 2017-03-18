@@ -2,60 +2,52 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: alpaca\n"
-"POT-Creation-Date: 2017-03-11 13:09+0100\n"
 "Plural-Forms: nplurals=1; plural=1;\n"
 
-msgid "%(raw_error_term)\nSorry, we do not have a proper message for this err"
-"or yet.\nPlease consider filing an issue at https://www.github.com/alp"
-"aca-lang/alpaca."
+msgid "builtin_type_arity_error %(num_expected) %(num_supplied)"
 msgstr ""
 
-msgid "Cannot find module \"%(mod)\"."
+msgid "duplicate_definition %(id)"
 msgstr ""
 
-msgid "Duplicate definitition of \"%(id)\"."
+msgid "duplicate_type_definition %(id)"
 msgstr ""
 
-msgid "Duplicate definitition of type \"%(id)\"."
+msgid "function_not_exported %(mod) %(name)"
 msgstr ""
 
-msgid "Incomplete expression."
+msgid "incomplete_expression"
 msgstr ""
 
-msgid "Invalid binary part type \"%(type)\".\nValid types are \"binary\", \"f"
-"loat\", \"int\", and \"utf8\"."
+msgid "invalid_bin_qualifier %(qualifier)"
 msgstr ""
 
-msgid "Invalid binary qualifier \"%(qualifier)\".\nValid qualifiers are \"end"
-"\", \"sign\", \"size\", \"type\" and \"unit\"."
+msgid "invalid_bin_type %(type)"
 msgstr ""
 
-msgid "Invalid endianess \"%(endianess)\".Did you mean \"big\", \"little\", o"
-"r \"native\"?"
+msgid "invalid_endianess %(endianess)"
 msgstr ""
 
-msgid "Invalid pattern for function argument."
+msgid "invalid_fun_parameter"
 msgstr ""
 
-msgid "Invalid top level construct."
+msgid "invalid_top_level_construct"
 msgstr ""
 
-msgid "No function %(fun) exported from module %(mod)."
+msgid "module_rename %(old) %(new)."
 msgstr ""
 
-msgid "No module name defined.\nYou may define it like this: \"module foo\""
+msgid "no_module"
 msgstr ""
 
-msgid "Redefintion of module name from \"%(old)\" to \"%(new)\"."
+msgid "no_module %(mod)"
 msgstr ""
 
-msgid "Type parameter provided for builtin type %(type), but none was expecte"
-"d."
+msgid "type_parameter_given_to_primitive_builtin_type %(type)"
 msgstr ""
 
-msgid "Unexpected token \"%(token)\"."
+msgid "unexpected_token %(token)"
 msgstr ""
 
-msgid "Wrong number of type parameters provided for builtin type %(type).\nEx"
-"pected %(num_expected), but got %(num_supplied)."
+msgid "unknown_error %(raw_error_term)"
 msgstr ""

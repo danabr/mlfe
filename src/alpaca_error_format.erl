@@ -20,8 +20,6 @@
 
 -compile({parse_transform, epo_gettext}).
 
--define(EN_US, "en-US").
-
 %% This function expects all strings passed in to it as part of error messages
 %% (e.g. function names) to be valid unicode strings.
 -spec fmt({error, term()}, Locale::string()) -> binary().
@@ -35,43 +33,33 @@ fmt({error, _}=Err, Locale) ->
     <<Msg/binary, "\n"/utf8>>.
 
 fmt_parse_error({duplicate_definition, Id}, Locale) ->
-    r(_(<<"Duplicate definitition of \"%(id)\".">>, Locale), [{id, Id}]);
+    t(__(<<"duplicate_definition %(id)">>), Locale, [{id, Id}]);
 fmt_parse_error({duplicate_type, Id}, Locale) ->
-    r(_(<<"Duplicate definitition of type \"%(id)\".">>, Locale), [{id, Id}]);
+    t(__(<<"duplicate_type_definition %(id)">>), Locale, [{id, Id}]);
 fmt_parse_error({function_not_exported, Mod, Name}, Locale) ->
-    r(_(<<"No function %(fun) exported from module %(mod).">>, Locale),
+    t(__(<<"function_not_exported %(mod) %(name)">>), Locale,
       [{'fun', Name}, {mod, atom_to_binary(Mod, utf8)}]);
 fmt_parse_error({invalid_bin_qualifier, Str}, Locale) ->
-    r(_(<<"Invalid binary qualifier \"%(qualifier)\".\n"
-          "Valid qualifiers are \"end\", \"sign\", \"size\", "
-          "\"type\" and \"unit\".">>, Locale),
-      [{qualifier, Str}]);
+    t(__(<<"invalid_bin_qualifier %(qualifier)">>), Locale, [{qualifier, Str}]);
 fmt_parse_error({invalid_bin_type, Str}, Locale) ->
-    r(_(<<"Invalid binary part type \"%(type)\".\n"
-           "Valid types are \"binary\", \"float\", \"int\", and \"utf8\".">>,
-        Locale),
-      [{type, Str}]);
+    t(__(<<"invalid_bin_type %(type)">>), Locale, [{type, Str}]);
 fmt_parse_error({invalid_endianess, Str}, Locale) ->
-    r(_(<<"Invalid endianess \"%(endianess)\"."
-           "Did you mean \"big\", \"little\", or \"native\"?">>, Locale),
-      [{endianess, Str}]);
+    t(__(<<"invalid_endianess %(endianess)">>), Locale, [{endianess, Str}]);
 fmt_parse_error({invalid_fun_parameter, _}, Locale) ->
-    _(<<"Invalid pattern for function argument.">>, Locale);
+    t(__(<<"invalid_fun_parameter">>), Locale);
 fmt_parse_error({invalid_top_level_construct, _}, Locale) ->
-    _(<<"Invalid top level construct.">>, Locale);
+    t(__(<<"invalid_top_level_construct">>), Locale);
 fmt_parse_error({module_rename, Old, New}, Locale) ->
-    r(_(<<"Redefintion of module name from \"%(old)\" to \"%(new)\".">>,
-        Locale),
+    t(__(<<"module_rename %(old) %(new).">>), Locale,
       [{old, atom_to_binary(Old, utf8)}, {new, atom_to_binary(New, utf8)}]);
 fmt_parse_error(no_module, Locale) ->
-    _(<<"No module name defined.\nYou may define it like this: \"module foo\"">>,
-      Locale);
+    t(__(<<"no_module">>), Locale);
 fmt_parse_error({no_module, Mod}, Locale) ->
-    r(_(<<"Cannot find module \"%(mod)\".">>, Locale), [{module, Mod}]);
+    t(__(<<"no_module %(mod)">>), Locale, [{module, Mod}]);
 fmt_parse_error({syntax_error, ""}, Locale) ->
-    _(<<"Incomplete expression.">>, Locale);
+    t(__(<<"incomplete_expression">>), Locale);
 fmt_parse_error({syntax_error, Token}, Locale) ->
-    r(_(<<"Unexpected token \"%(token)\".">>, Locale), [{token, Token}]);
+    t(__(<<"unexpected_token %(token)">>), Locale, [{token, Token}]);
 fmt_parse_error({wrong_type_arity, t_atom, _A}, Locale) ->
     simple_type_arity_error("atom", Locale);
 fmt_parse_error({wrong_type_arity, t_binary, _A}, Locale) ->
@@ -94,25 +82,31 @@ fmt_parse_error(Unknown, Locale) ->
     fmt_unknown_error(Unknown, Locale).
 
 simple_type_arity_error(LiteralType, Locale) ->
-    r(_(<<"Type parameter provided for builtin type %(type), "
-           "but none was expected.">>, Locale),
+    t(__(<<"type_parameter_given_to_primitive_builtin_type %(type)">>), Locale,
       [{type, LiteralType}]).
 
 poly_type_arity_error(LiteralType, ExpectedArity, ActualArity, Locale) ->
-    r(_(<<"Wrong number of type parameters provided for builtin type %(type).\n"
-          "Expected %(num_expected), but got %(num_supplied).">>, Locale),
+    t(__(<<"builtin_type_arity_error %(num_expected) %(num_supplied)">>),
+      Locale,
       [{type, LiteralType},
        {num_expected, integer_to_binary(ExpectedArity)},
        {num_supplied, integer_to_binary(ActualArity)}]).
 
 fmt_unknown_error(Err, Locale) ->
-    r(_(<<"%(raw_error_term)\n"
-          "Sorry, we do not have a proper message for this error yet.\n"
-          "Please consider filing an issue at "
-          "https://www.github.com/alpaca-lang/alpaca.">>, Locale),
+    t(__(<<"unknown_error %(raw_error_term)">>), Locale,
       [{raw_error_term, io_lib:format("~tp", [Err])}]).
 
-r(TranslatedStr, Replacements) ->
+t(MsgId, Locale) ->
+    t(MsgId, Locale, []).
+
+t(MsgId, Locale, Replacements) ->
+  Translated = case epo_gettext:gettext(alpaca_compiled_po, MsgId, Locale) of
+      MsgId -> epo_gettext:gettext(alpaca_compiled_po, MsgId, "en_US");
+      Translation -> Translation
+  end,
+  replace(Translated, Replacements).
+
+replace(TranslatedStr, Replacements) ->
   lists:foldl(fun({FromAtom, To}, Str) ->
     FromStr = "%\\(" ++ atom_to_list(FromAtom) ++ "\\)",
     re:replace(Str, FromStr, To, [global, unicode, {return, binary}])
@@ -122,12 +116,12 @@ r(TranslatedStr, Replacements) ->
 -include_lib("eunit/include/eunit.hrl").
 
 fmt_unknown_parse_error_test() ->
-  File = "/tmp/file.alpaca",
+  File = "/tmp/file.alp",
   Line = 10,
   ParseError = unknown,
   Error = {error, {parse_error, File, Line, ParseError}},
   Msg = fmt(Error, "en_US"),
-  Expected = <<"/tmp/file.alpaca:10: unknown\n"
+  Expected = <<"/tmp/file.alp:10: unknown\n"
                "Sorry, we do not have a proper message for this error yet.\n"
                "Please consider filing an issue at "
                "https://www.github.com/alpaca-lang/alpaca.\n">>,
@@ -140,6 +134,23 @@ fmt_unknown_error_test() ->
                "Sorry, we do not have a proper message for this error yet.\n"
                "Please consider filing an issue at "
                "https://www.github.com/alpaca-lang/alpaca.\n">>,
+  ?assertEqual(Expected, Msg).
+
+en_us_fallback_test() ->
+  File = "/tmp/file.alp",
+  Line = 10,
+  ParseError = {syntax_error, "blah"},
+  Error = {error, {parse_error, File, Line, ParseError}},
+  Msg = fmt(Error, "sv_SE"),
+  Expected = <<"/tmp/file.alp:10: Symtax error before \"blah\".\n">>,
+  ?assertEqual(Expected, Msg).
+
+real_error_test() ->
+  Source = "let add a b = a + b",
+  Error = {error, _}  = alpaca:compile({text, Source}),
+  Msg = fmt(Error, "sv_SE"),
+  Expected = <<"<no file>:1: No module name defined.\n"
+               "You may define it like this: \"module foo\".\n">>,
   ?assertEqual(Expected, Msg).
 
 -endif.
