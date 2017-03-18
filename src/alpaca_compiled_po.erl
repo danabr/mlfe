@@ -108,4 +108,4 @@ to_boolean(true) -> true;
 to_boolean(false) -> false;
 to_boolean(N) when N > 0 -> to_boolean(true);
 to_boolean(N) when N == 0 -> to_boolean(false).
-
+	
