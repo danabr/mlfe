@@ -10,7 +10,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
-"X-Generator: Poedit 1.8.7.1\n"
+"X-Generator: Poedit 1.8.12\n"
 
 msgid "builtin_type_arity_error %(num_expected) %(num_supplied)"
 msgstr ""
@@ -37,12 +37,12 @@ msgstr ""
 
 msgid "invalid_bin_type %(type)"
 msgstr ""
-"Invalid binary part type \"%(type).\n"
+"Invalid binary part type \"%(type)\".\n"
 "Valid types are \"binary\", \"float, \"int\", and \"utf8\"."
 
 msgid "invalid_endianess %(endianess)"
 msgstr ""
-"Invalid endianess \"%(endianess)\".Did you mean \"big\", \"little\", or "
+"Invalid endianness \"%(endianness)\". Did you mean \"big\", \"little\", or "
 "\"native\"?"
 
 msgid "invalid_fun_parameter"
@@ -68,7 +68,7 @@ msgstr ""
 "expected."
 
 msgid "unexpected_token %(token)"
-msgstr "Symtax error before \"%(token)\"."
+msgstr "Syntax error before \"%(token)\"."
 
 msgid "unknown_error %(raw_error_term)"
 msgstr ""
